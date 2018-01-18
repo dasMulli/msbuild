@@ -204,6 +204,18 @@ namespace Microsoft.Build.Tasks
                 List<CodeAttributeArgument> orderedParameters = new List<CodeAttributeArgument>(new CodeAttributeArgument[customMetadata.Count + 1] /* max possible slots needed */);
                 List<CodeAttributeArgument> namedParameters = new List<CodeAttributeArgument>();
 
+                CodeExpression CreateCodeExpression(string metadataKey, string value)
+                {
+                    string treatAsLiteralPropertyKey = $"_Treat{metadataKey}AsLiteral";
+                    if (customMetadata.Contains(treatAsLiteralPropertyKey) &&
+                        ((string) customMetadata[treatAsLiteralPropertyKey]).Equals("true", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new CodeSnippetExpression(value);
+                    }
+
+                    return new CodePrimitiveExpression(value);
+                }
+
                 foreach (DictionaryEntry entry in customMetadata)
                 {
                     string name = (string)entry.Key;
@@ -226,11 +238,11 @@ namespace Microsoft.Build.Tasks
                         }
 
                         // "_Parameter01" and "_Parameter1" would overwrite each other
-                        orderedParameters[index - 1] = new CodeAttributeArgument(String.Empty, new CodePrimitiveExpression(value));
+                        orderedParameters[index - 1] = new CodeAttributeArgument(String.Empty, CreateCodeExpression(name, value));
                     }
-                    else
+                    else if (!name.StartsWith("_Treat", StringComparison.OrdinalIgnoreCase))
                     {
-                        namedParameters.Add(new CodeAttributeArgument(name, new CodePrimitiveExpression(value)));
+                        namedParameters.Add(new CodeAttributeArgument(name, CreateCodeExpression(name, value)));
                     }
                 }
 
@@ -363,11 +375,25 @@ namespace Microsoft.Build.Tasks
             List<string> orderedParameters = new List<string>(new string[customMetadata.Count + 1]);
             List<string> namedParameters = new List<string>();
 
+            string CreateValueCodeString(string metadataKey, object value)
+            {
+                string stringValue = value as string ?? value.ToString();
+
+                string treatAsLiteralPropertyKey = $"_Treat{metadataKey}AsLiteral";
+                if (customMetadata.Contains(treatAsLiteralPropertyKey) &&
+                    ((string)customMetadata[treatAsLiteralPropertyKey]).Equals("true", StringComparison.OrdinalIgnoreCase))
+                {
+                    return stringValue;
+                }
+
+                return quoteString(stringValue);
+            }
+
             foreach (DictionaryEntry entry in customMetadata)
             {
                 string name = (string) entry.Key;
-                string value = entry.Value is string ? quoteString(entry.Value.ToString()) : entry.Value.ToString();
-
+                object value = entry.Value;
+                
                 if (name.StartsWith("_Parameter", StringComparison.OrdinalIgnoreCase))
                 {
                     int index;
@@ -385,11 +411,11 @@ namespace Microsoft.Build.Tasks
                     }
 
                     // "_Parameter01" and "_Parameter1" would overwrite each other
-                    orderedParameters[index - 1] = value;
+                    orderedParameters[index - 1] = CreateValueCodeString(name, value);
                 }
-                else
+                else if(!name.StartsWith("_Treat", StringComparison.OrdinalIgnoreCase))
                 {
-                    namedParameters.Add($"{name}{namedArgumentString}{value}");
+                    namedParameters.Add($"{name}{namedArgumentString}{CreateValueCodeString(name, value)}");
                 }
             }
 
